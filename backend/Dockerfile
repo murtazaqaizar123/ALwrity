@@ -2,47 +2,41 @@
 FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-
-# Prevent build failure on ESLint warnings
 ENV CI=false
-
 RUN npm install
 COPY frontend/ ./
-# Build React app (outputs to /app/frontend/build)
 RUN npm run build
 
-# --- Stage 2: Final Image (Python Backend) ---
-# CRITICAL FIX: Use Python 3.12 to allow backslashes in f-strings
+# --- Stage 2: Final Image (Python 3.12) ---
 FROM python:3.12-bookworm
 WORKDIR /app
 
-# 1. Install system dependencies required for heavy Python libraries
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
-    build-essential \
-    gcc \
+    curl build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Upgrade pip tools for better dependency resolution
+# Upgrade pip and install requirements
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-
-# 3. Install Backend dependencies
 COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# 4. Copy the backend source code
+# Copy backend code
 COPY backend/ ./backend/
 
-# 5. Copy the built React frontend from Stage 1
+# Copy the build from Stage 1 to the backend's static folder
+# Note: Ensure your FastAPI/Flask app is configured to serve this directory
 COPY --from=frontend-builder /app/frontend/build ./frontend/build
 
-# 6. Pre-download spaCy model to prevent runtime download delays
+# Pre-download spaCy
 RUN python -m spacy download en_core_web_sm
 
-# 7. Expose the port
+# Expose the internal port
 EXPOSE 8000
 
-# 8. CRITICAL FIX: Run the command from the backend folder 
-# This solves the "app.py not found" error
+# Set environment to ignore the duplicate index errors if possible
+ENV PYTHONUNBUFFERED=1
+
+# Run from the backend directory
 WORKDIR /app/backend
-CMD ["python", "start_alwrity_backend.py"]
+CMD ["python", "app.py"]
