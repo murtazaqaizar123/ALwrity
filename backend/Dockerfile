@@ -2,9 +2,13 @@
 FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
+
+# Disable 'CI=true' so the build doesn't fail on ESLint warnings
+ENV CI=false
+
 RUN npm install
 COPY frontend/ ./
-# This creates the 'dist' folder
+# CRA outputs to 'build', not 'dist'
 RUN npm run build
 
 # --- Stage 2: Setup the Backend & Final Image ---
@@ -23,14 +27,11 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 # Copy backend code
 COPY backend/ ./backend/
 
-# Copy the built frontend from Stage 1
-# We'll put it inside the backend folder so FastAPI can serve it, 
-# or just keep it separate if you're running two processes.
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+# FIX: Copy from 'build' instead of 'dist'
+COPY --from=frontend-builder /app/frontend/build ./frontend/build
 
-# Expose the port (Alwrity backend usually runs on 8000)
+# Expose the port
 EXPOSE 8000
 
-# Start script: We need to run the backend. 
-# Note: To run both in one container, we'll use a simple shell command.
+# Start the application
 CMD ["python", "backend/start_alwrity_backend.py"]
